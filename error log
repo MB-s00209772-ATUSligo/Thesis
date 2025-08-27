@@ -1,0 +1,16 @@
+(propopt) [matthew.barry@janus.kmn.ie@hpc-hn-101 matthew.barry]$ cd /HPC/matthew.barry/OpenFOAM-10/run/propellerCase
+
+(propopt) [matthew.barry@janus.kmn.ie@hpc-hn-101 propellerCase]$ mkdir -p /HPC/matthew.barry/OpenFOAM-10/run/propellerCase/constant/triSurface
+
+
+
+cp /HPC/matthew.barry/results/case_20250826_201535_420b/constant/triSurface/propeller-innerCylinder.stl \
+
+   /HPC/matthew.barry/OpenFOAM-10/run/propellerCase/constant/triSurface/
+
+cp: missing destination file operand after '/HPC/matthew.barry/results/case_20250826_201535_420b/constant/triSurface/propeller-innerCylinder.stl'
+Try 'cp --help' for more information.
+bash: /HPC/matthew.barry/OpenFOAM-10/run/propellerCase/constant/triSurface/: Is a directory
+(propopt) [matthew.barry@janus.kmn.ie@hpc-hn-101 propellerCase]$
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////////
