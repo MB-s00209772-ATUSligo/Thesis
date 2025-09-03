@@ -286,7 +286,26 @@ FOAM exiting
 (propopt) [matthew.barry@janus.kmn.ie@hpc-hn-101 propellerCase]$ 
 
 
+///////////////////////////////////////////////
 
+
+--> FOAM FATAL ERROR: 
+Unknown region name innerCylinder for surface innerCylinder
+Valid region names are 1(patch0)
+
+    From function Foam::searchableSurfaces::searchableSurfaces(const Foam::IOobject&, const Foam::dictionary&, bool)
+    in file searchableSurfaces/searchableSurfaces/searchableSurfaces.C at line 259.
+
+FOAM exiting
+
+[ERROR] OpenFOAM command failed: Command '['/HPC/matthew.barry/OpenFOAM-10/platforms/linux64GccDPInt32Opt/bin/snappyHexMesh', '-overwrite']' returned non-zero exit status 1.
+3  	7     	[      0. 1000000.]	[      0. 1000000.]	[      0. 1000000.]
+
+Best design found:
+Pitch: 0.0213, Chord: 0.0192, Skew: 6.98
+Fitness (thrust, noise): (0.0, 1000000.0)
+(propopt) [matthew.barry@janus.kmn.ie@hpc-hn-101 propellerCase]$ nano HPC/matthew.barry/OpenFOAM-10/platforms/linux64GccDPInt32Opt/bin/snappyHexMesh
+(propopt) [matthew.barry@janus.kmn.ie@hpc-hn-101 propellerCase]$ 
 
 
 
