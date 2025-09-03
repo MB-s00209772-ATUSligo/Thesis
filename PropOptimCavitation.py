@@ -52,6 +52,8 @@ FOAM_ENV = os.environ.copy()
 
 FOAM_ENV["FOAM_RUN"] = BASE_CASE_DIR
 
+FOAM_ENV["PATH"] = "/HPC/matthew.barry/OpenFOAM-10/platforms/linux64GccDPInt32Opt/bin:" + FOAM_ENV.get("PATH", "")
+
 
 
 # === PROP GEOMETRY CLASS ===
@@ -108,7 +110,9 @@ def run_openfoam_simulation(case_dir):
 
     stl_dest = os.path.join(constant_triSurface_dir, TRISURFACE_FILENAME)
 
-    if os.path.exists(stl_dest):
+
+
+    if os.path.islink(stl_dest) or os.path.exists(stl_dest):
 
         os.remove(stl_dest)
 
@@ -130,7 +134,7 @@ def run_openfoam_simulation(case_dir):
 
 
 
-    # Run OpenFOAM commands
+    # Run OpenFOAM commands with correct environment
 
     try:
 
@@ -220,9 +224,13 @@ toolbox.register("population", tools.initRepeat, list, toolbox.individual)
 
 toolbox.register("evaluate", evaluate)
 
-toolbox.register("mate", tools.cxSimulatedBinaryBounded, low=[0.02, 0.01, -15], up=[0.08, 0.04, 15], eta=15.0)
+toolbox.register("mate", tools.cxSimulatedBinaryBounded,
 
-toolbox.register("mutate", tools.mutPolynomialBounded, low=[0.02, 0.01, -15], up=[0.08, 0.04, 15], eta=20.0, indpb=0.2)
+                 low=[0.02, 0.01, -15], up=[0.08, 0.04, 15], eta=15.0)
+
+toolbox.register("mutate", tools.mutPolynomialBounded,
+
+                 low=[0.02, 0.01, -15], up=[0.08, 0.04, 15], eta=20.0, indpb=0.2)
 
 toolbox.register("select", tools.selNSGA2)
 
@@ -240,6 +248,8 @@ def main():
 
     hof = tools.HallOfFame(1)
 
+
+
     stats = tools.Statistics(lambda ind: ind.fitness.values)
 
     stats.register("avg", np.mean, axis=0)
@@ -250,23 +260,27 @@ def main():
 
 
 
-    population, logbook = algorithms.eaMuPlusLambda(pop, toolbox,
+    population, logbook = algorithms.eaMuPlusLambda(
 
-                                                    mu=4,
+        pop, toolbox,
 
-                                                    lambda_=8,
+        mu=4,
 
-                                                    cxpb=0.6,
+        lambda_=8,
 
-                                                    mutpb=0.3,
+        cxpb=0.6,
 
-                                                    ngen=3,
+        mutpb=0.3,
 
-                                                    stats=stats,
+        ngen=3,
 
-                                                    halloffame=hof,
+        stats=stats,
 
-                                                    verbose=True)
+        halloffame=hof,
+
+        verbose=True
+
+    )
 
 
 
@@ -285,5 +299,4 @@ def main():
 if __name__ == "__main__":
 
     main()
-
 
