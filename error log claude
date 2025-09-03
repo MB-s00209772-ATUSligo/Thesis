@@ -81,3 +81,14 @@ Traceback (most recent call last):
 AttributeError: 'NoneType' object has no attribute 'copy'
 (propopt) [matthew.barry@janus.kmn.ie@hpc-hn-101 matthew.barry]$ 
 
+
+////////////////////////////////////////
+
+File "/HPC/matthew.barry/Propeller_Optimizer_NoOpenfoam.py", line 798, in <module>
+    main()
+  File "/HPC/matthew.barry/Propeller_Optimizer_NoOpenfoam.py", line 732, in main
+    F_norm = results.F.copy()
+             ^^^^^^^^^^^^^^
+AttributeError: 'NoneType' object has no attribute 'copy'
+(propopt) [matthew.barry@janus.kmn.ie@hpc-hn-101 matthew.barry]$ 
+
