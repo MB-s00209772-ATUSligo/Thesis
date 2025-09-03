@@ -2401,3 +2401,807 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+
+//////////////////////////////////////////////////////
+
+#!/usr/bin/env python3
+"""
+Marine Propeller Geometry Optimization using NSGA-II with Built-in CFD
+Optimizes for reduced cavitation/noise while maintaining thrust and efficiency
+Uses Blade Element Momentum Theory (BEMT) and cavitation prediction models
+"""
+
+import numpy as np
+import matplotlib.pyplot as plt
+from mpl_toolkits.mplot3d import Axes3D
+import trimesh
+from pymoo.core.problem import Problem
+from pymoo.algorithms.moo.nsga2 import NSGA2
+from pymoo.operators.crossover.sbx import SBX
+from pymoo.operators.mutation.pm import PM
+from pymoo.operators.sampling.rnd import FloatRandomSampling
+from pymoo.optimize import minimize
+from pymoo.termination import get_termination
+from dataclasses import dataclass
+from typing import Tuple, List
+import json
+from scipy.integrate import simpson
+from scipy.interpolate import interp1d
+
+@dataclass
+class PropellerParams:
+    """Parameters defining propeller geometry"""
+    n_blades: int = 4
+    diameter: float = 180.0  # mm
+    hub_dia_base: float = 35.0  # mm
+    hub_dia_top: float = 40.0  # mm
+    hub_height: float = 30.0  # mm
+    pitch_ratio: float = 1.0  # pitch/diameter ratio
+    rake: float = 0.0  # degrees
+    skew: float = 15.0  # degrees
+    chord_distribution: np.ndarray = None
+    thickness_distribution: np.ndarray = None
+    camber_distribution: np.ndarray = None
+    
+    def __post_init__(self):
+        if self.chord_distribution is None:
+            # Default chord distribution (normalized)
+            r = np.linspace(0.2, 1.0, 10)
+            self.chord_distribution = 0.3 - 0.2 * r + 0.1 * r**2
+        if self.thickness_distribution is None:
+            # Default thickness distribution
+            r = np.linspace(0.2, 1.0, 10)
+            self.thickness_distribution = 0.06 - 0.05 * r
+        if self.camber_distribution is None:
+            # Default camber distribution
+            r = np.linspace(0.2, 1.0, 10)
+            self.camber_distribution = 0.02 * np.ones_like(r)
+
+class PropellerGeometry:
+    """Generate 3D propeller geometry from parameters"""
+    
+    def __init__(self, params: PropellerParams):
+        self.params = params
+        
+    def create_blade_section(self, r: float, theta: float = 0) -> np.ndarray:
+        """Create a blade cross-section at radius r"""
+        # Interpolate distributions at radius r
+        r_norm = (r - self.params.hub_dia_top/2) / (self.params.diameter/2 - self.params.hub_dia_top/2)
+        r_norm = np.clip(r_norm, 0, 1)
+        
+        # Get section properties
+        chord = np.interp(r_norm, np.linspace(0, 1, len(self.params.chord_distribution)),
+                         self.params.chord_distribution) * self.params.diameter/2
+        thickness = np.interp(r_norm, np.linspace(0, 1, len(self.params.thickness_distribution)),
+                            self.params.thickness_distribution) * chord
+        camber = np.interp(r_norm, np.linspace(0, 1, len(self.params.camber_distribution)),
+                          self.params.camber_distribution) * chord
+        
+        # Generate NACA-like airfoil
+        n_points = 50
+        x = np.linspace(0, chord, n_points)
+        
+        # Thickness distribution (symmetric)
+        yt = thickness * (1.4845 * np.sqrt(x/chord) - 0.63 * (x/chord) 
+                         - 1.758 * (x/chord)**2 + 1.4215 * (x/chord)**3 
+                         - 0.5075 * (x/chord)**4)
+        
+        # Camber line
+        yc = camber * np.sin(np.pi * x/chord)
+        
+        # Combine upper and lower surfaces
+        upper_x = x
+        upper_y = yc + yt
+        lower_x = x
+        lower_y = yc - yt
+        
+        # Create closed curve
+        x_coords = np.concatenate([upper_x, lower_x[::-1]])
+        y_coords = np.concatenate([upper_y, lower_y[::-1]])
+        z_coords = np.ones_like(x_coords) * r
+        
+        # Apply pitch
+        pitch_angle = np.arctan(self.params.pitch_ratio * self.params.diameter / (2 * np.pi * r))
+        
+        # Apply skew
+        skew_angle = self.params.skew * r_norm * np.pi / 180
+        
+        # Apply rake
+        rake_offset = r * np.tan(self.params.rake * np.pi / 180)
+        
+        # Transform coordinates
+        points = np.column_stack([x_coords - chord/2, y_coords, z_coords])
+        
+        # Rotate for pitch
+        Rp = np.array([[np.cos(pitch_angle), -np.sin(pitch_angle), 0],
+                       [np.sin(pitch_angle), np.cos(pitch_angle), 0],
+                       [0, 0, 1]])
+        points = points @ Rp.T
+        
+        # Apply skew (rotation in x-y plane)
+        Rs = np.array([[np.cos(skew_angle + theta), -np.sin(skew_angle + theta), 0],
+                       [np.sin(skew_angle + theta), np.cos(skew_angle + theta), 0],
+                       [0, 0, 1]])
+        points = points @ Rs.T
+        
+        # Apply rake
+        points[:, 2] += rake_offset
+        
+        return points
+    
+    def create_blade(self) -> trimesh.Trimesh:
+        """Create a single blade mesh"""
+        # Generate sections along the blade
+        n_sections = 20
+        radii = np.linspace(self.params.hub_dia_top/2, self.params.diameter/2, n_sections)
+        
+        vertices = []
+        faces = []
+        
+        for i, r in enumerate(radii):
+            section = self.create_blade_section(r)
+            start_idx = len(vertices)
+            vertices.extend(section)
+            
+            if i > 0:
+                # Connect to previous section
+                n_points = len(section)
+                prev_start = start_idx - n_points
+                
+                for j in range(n_points - 1):
+                    # Create two triangles for each quad
+                    faces.append([prev_start + j, start_idx + j, start_idx + j + 1])
+                    faces.append([prev_start + j, start_idx + j + 1, prev_start + j + 1])
+        
+        # Add blade tip
+        tip_center = np.mean(vertices[-len(section):], axis=0)
+        vertices.append(tip_center)
+        tip_idx = len(vertices) - 1
+        
+        for j in range(len(section) - 1):
+            faces.append([start_idx + j, start_idx + j + 1, tip_idx])
+        
+        blade_mesh = trimesh.Trimesh(vertices=np.array(vertices), faces=np.array(faces))
+        blade_mesh.fix_normals()
+        
+        return blade_mesh
+    
+    def create_hub(self) -> trimesh.Trimesh:
+        """Create the hub (frustum) mesh"""
+        # Create frustum
+        height = self.params.hub_height
+        r_bottom = self.params.hub_dia_base / 2
+        r_top = self.params.hub_dia_top / 2
+        
+        # Generate cylindrical coordinates
+        n_segments = 32
+        theta = np.linspace(0, 2*np.pi, n_segments, endpoint=False)
+        
+        vertices = []
+        faces = []
+        
+        # Bottom circle
+        for t in theta:
+            vertices.append([r_bottom * np.cos(t), r_bottom * np.sin(t), 0])
+        
+        # Top circle
+        for t in theta:
+            vertices.append([r_top * np.cos(t), r_top * np.sin(t), height])
+        
+        # Bottom center
+        vertices.append([0, 0, 0])
+        bottom_center_idx = len(vertices) - 1
+        
+        # Top center
+        vertices.append([0, 0, height])
+        top_center_idx = len(vertices) - 1
+        
+        # Side faces
+        for i in range(n_segments):
+            next_i = (i + 1) % n_segments
+            faces.append([i, next_i, n_segments + next_i])
+            faces.append([i, n_segments + next_i, n_segments + i])
+        
+        # Bottom face
+        for i in range(n_segments):
+            next_i = (i + 1) % n_segments
+            faces.append([bottom_center_idx, next_i, i])
+        
+        # Top face
+        for i in range(n_segments):
+            next_i = (i + 1) % n_segments
+            faces.append([top_center_idx, n_segments + i, n_segments + next_i])
+        
+        hub_mesh = trimesh.Trimesh(vertices=np.array(vertices), faces=np.array(faces))
+        hub_mesh.fix_normals()
+        
+        return hub_mesh
+    
+    def create_propeller(self) -> trimesh.Trimesh:
+        """Create complete propeller mesh"""
+        # Create hub
+        hub = self.create_hub()
+        
+        # Create and position blades
+        propeller = hub
+        blade_angle = 2 * np.pi / self.params.n_blades
+        
+        for i in range(self.params.n_blades):
+            blade = self.create_blade()
+            
+            # Rotate blade to correct position
+            rotation_matrix = trimesh.transformations.rotation_matrix(
+                i * blade_angle, [0, 0, 1], [0, 0, 0]
+            )
+            blade.apply_transform(rotation_matrix)
+            
+            # Combine with propeller
+            propeller = trimesh.util.concatenate([propeller, blade])
+        
+        # Ensure watertight mesh
+        propeller.process(validate=True)
+        
+        return propeller
+
+class BEMTSolver:
+    """Blade Element Momentum Theory solver for propeller performance"""
+    
+    def __init__(self, params: PropellerParams, operating_conditions: dict):
+        self.params = params
+        self.water_density = operating_conditions.get('rho', 1000.0)  # kg/m³
+        self.kinematic_viscosity = operating_conditions.get('nu', 1.0e-6)  # m²/s
+        self.vapor_pressure = operating_conditions.get('pv', 2340)  # Pa
+        self.ambient_pressure = operating_conditions.get('p_inf', 101325)  # Pa
+        self.depth = operating_conditions.get('depth', 5.0)  # m
+        
+    def get_blade_properties(self, r_norm):
+        """Get interpolated blade properties at normalized radius"""
+        # Interpolate from distributions
+        chord = np.interp(r_norm, np.linspace(0, 1, len(self.params.chord_distribution)),
+                         self.params.chord_distribution) * self.params.diameter/2000  # Convert to m
+        thickness = np.interp(r_norm, np.linspace(0, 1, len(self.params.thickness_distribution)),
+                            self.params.thickness_distribution)
+        camber = np.interp(r_norm, np.linspace(0, 1, len(self.params.camber_distribution)),
+                          self.params.camber_distribution)
+        
+        # Pitch angle
+        r_actual = r_norm * self.params.diameter/2000  # m
+        if r_actual > 0:
+            pitch_angle = np.arctan(self.params.pitch_ratio * self.params.diameter/1000 / (2 * np.pi * r_actual))
+        else:
+            pitch_angle = 0
+            
+        return chord, thickness, camber, pitch_angle
+    
+    def lift_drag_coefficients(self, alpha, Re):
+        """Calculate lift and drag coefficients using thin airfoil theory + viscous corrections"""
+        # Thin airfoil theory for lift
+        Cl = 2 * np.pi * np.sin(alpha)
+        
+        # Drag coefficient (laminar + pressure drag)
+        Cd0 = 0.008 + 1.0/Re**0.5 * 0.1  # Simplified drag model
+        Cdi = Cl**2 / (np.pi * 5)  # Induced drag (AR=5 assumed)
+        Cd = Cd0 + Cdi
+        
+        # Stall correction
+        alpha_stall = 15 * np.pi/180
+        if abs(alpha) > alpha_stall:
+            stall_factor = np.exp(-2*(abs(alpha) - alpha_stall))
+            Cl *= stall_factor
+            Cd *= (2 - stall_factor)
+        
+        return Cl, Cd
+    
+    def calculate_cavitation_number(self, r, V_ship, rpm):
+        """Calculate local cavitation number"""
+        # Local velocity
+        omega = rpm * 2 * np.pi / 60  # rad/s
+        V_tangential = omega * r
+        V_total = np.sqrt(V_ship**2 + V_tangential**2)
+        
+        # Cavitation number σ
+        p_static = self.ambient_pressure + self.water_density * 9.81 * self.depth
+        sigma = (p_static - self.vapor_pressure) / (0.5 * self.water_density * V_total**2)
+        
+        return sigma
+    
+    def burrill_cavitation_criterion(self, r_norm, thrust_loading, sigma):
+        """Burrill diagram cavitation criterion"""
+        # Projected area ratio
+        chord, _, _, _ = self.get_blade_properties(r_norm)
+        projected_area_ratio = self.params.n_blades * chord / (2 * np.pi * r_norm * self.params.diameter/2000)
+        
+        # Burrill limit (simplified)
+        tau_crit = (sigma + 0.2) * projected_area_ratio
+        
+        # Margin to cavitation (positive = no cavitation)
+        margin = tau_crit - thrust_loading
+        
+        return margin
+    
+    def keller_criterion(self):
+        """Keller's minimum blade area criterion for cavitation avoidance"""
+        # Keller's formula for minimum blade area ratio
+        Z = self.params.n_blades
+        depth_factor = (self.depth + 10.33) / 10.33  # Depth in meters, 10.33m = 1 atm
+        
+        # Minimum expanded area ratio
+        min_EAR = (1.3 + 0.3 * Z) / depth_factor + 0.2
+        
+        # Calculate actual EAR
+        actual_EAR = self.calculate_expanded_area_ratio()
+        
+        # Return margin (positive = good)
+        return actual_EAR - min_EAR
+    
+    def calculate_expanded_area_ratio(self):
+        """Calculate the expanded area ratio of the propeller"""
+        # Integrate blade area
+        r_values = np.linspace(0.2, 1.0, 50)
+        blade_areas = []
+        
+        for r_norm in r_values:
+            chord, _, _, _ = self.get_blade_properties(r_norm)
+            r_actual = r_norm * self.params.diameter/2000
+            blade_areas.append(chord * r_actual)
+        
+        # Total expanded area
+        total_blade_area = self.params.n_blades * 2 * simpson(blade_areas, x=r_values * self.params.diameter/2000)
+        disc_area = np.pi * (self.params.diameter/2000)**2
+        
+        return total_blade_area / disc_area
+    
+    def solve(self, V_ship: float, rpm: float) -> dict:
+        """Solve for propeller performance using BEMT"""
+        n = rpm / 60  # rps
+        omega = 2 * np.pi * n  # rad/s
+        J = V_ship / (n * self.params.diameter/1000)  # Advance ratio
+        
+        # Discretize blade into elements
+        n_elements = 30
+        r_hub = self.params.hub_dia_top/2000  # m
+        r_tip = self.params.diameter/2000  # m
+        r_values = np.linspace(r_hub, r_tip, n_elements)
+        
+        # Initialize totals
+        total_thrust = 0
+        total_torque = 0
+        cavitation_indices = []
+        noise_levels = []
+        
+        # Iterate over blade elements
+        for i, r in enumerate(r_values):
+            r_norm = (r - r_hub) / (r_tip - r_hub)
+            
+            # Get blade properties
+            chord, thickness, camber, pitch_angle = self.get_blade_properties(r_norm)
+            
+            # Blade element velocities
+            V_axial = V_ship
+            V_tangential = omega * r
+            V_rel = np.sqrt(V_axial**2 + V_tangential**2)
+            
+            # Flow angles
+            phi = np.arctan2(V_axial, V_tangential)
+            alpha = pitch_angle - phi  # Angle of attack
+            
+            # Reynolds number
+            Re = V_rel * chord / self.kinematic_viscosity
+            Re = max(Re, 1e4)  # Minimum Re for stability
+            
+            # Lift and drag coefficients
+            Cl, Cd = self.lift_drag_coefficients(alpha, Re)
+            
+            # Forces per unit span
+            dr = r_values[1] - r_values[0] if i < n_elements-1 else r_values[-1] - r_values[-2]
+            dL = 0.5 * self.water_density * V_rel**2 * chord * Cl * dr
+            dD = 0.5 * self.water_density * V_rel**2 * chord * Cd * dr
+            
+            # Thrust and torque contributions
+            dT = dL * np.cos(phi) - dD * np.sin(phi)
+            dQ = (dL * np.sin(phi) + dD * np.cos(phi)) * r
+            
+            # Account for all blades
+            total_thrust += self.params.n_blades * dT
+            total_torque += self.params.n_blades * dQ
+            
+            # Cavitation analysis
+            sigma = self.calculate_cavitation_number(r, V_ship, rpm)
+            thrust_loading = dT / (0.5 * self.water_density * V_rel**2 * chord * dr)
+            cav_margin = self.burrill_cavitation_criterion(r_norm, thrust_loading, sigma)
+            
+            # Store cavitation index (lower sigma = more cavitation)
+            cavitation_indices.append(1.0 / (sigma + 0.1))
+            
+            # Noise estimation (simplified - based on tip speed and loading)
+            tip_mach = V_tangential / 1500  # Speed of sound in water ~1500 m/s
+            loading_noise = 10 * np.log10(abs(thrust_loading) + 1)
+            thickness_noise = 20 * np.log10(tip_mach + 0.1) * thickness
+            noise_levels.append(loading_noise + thickness_noise)
+        
+        # Calculate efficiency
+        if total_torque > 0:
+            efficiency = (total_thrust * V_ship) / (omega * total_torque)
+        else:
+            efficiency = 0
+        
+        # Cavitation metrics
+        max_cavitation_index = max(cavitation_indices) if cavitation_indices else 1.0
+        keller_margin = self.keller_criterion()
+        
+        # Noise metrics
+        overall_noise = 10 * np.log10(sum(10**(nl/10) for nl in noise_levels))
+        
+        # Tip vortex cavitation check
+        tip_speed = omega * r_tip
+        tip_cavitation_number = self.calculate_cavitation_number(r_tip, V_ship, rpm)
+        
+        return {
+            'thrust': total_thrust,  # N
+            'torque': total_torque,  # Nm
+            'efficiency': efficiency,
+            'cavitation_index': max_cavitation_index,
+            'keller_margin': keller_margin,
+            'noise_level': overall_noise,  # dB
+            'tip_cavitation_number': tip_cavitation_number,
+            'KT': total_thrust / (self.water_density * n**2 * (self.params.diameter/1000)**4),
+            'KQ': total_torque / (self.water_density * n**2 * (self.params.diameter/1000)**5),
+            'J': J
+        }
+
+class PropellerOptimizationProblem(Problem):
+    """Multi-objective optimization problem for propeller design"""
+    
+    def __init__(self):
+        # Design variables: chord, thickness, camber, pitch, skew, rake distributions
+        n_vars = 34  # 10 points each for chord, thickness, camber + pitch + skew + rake + n_blades
+        
+        # Bounds for design variables
+        xl = np.array([0.15]*10 + [0.02]*10 + [0.0]*10 + [0.7, 0, 0, 3])
+        xu = np.array([0.4]*10 + [0.12]*10 + [0.04]*10 + [1.5, 25, 10, 6])
+        
+        super().__init__(n_var=n_vars, n_obj=3, n_constr=3, xl=xl, xu=xu)
+        
+        self.eval_count = 0
+        
+        # Operating conditions
+        self.operating_conditions = {
+            'V_ship': 5.0,  # m/s (ship speed)
+            'rpm': 1000,  # RPM
+            'rho': 1025.0,  # kg/m³ (seawater)
+            'nu': 1.35e-6,  # m²/s (seawater kinematic viscosity)
+            'depth': 10.0,  # m
+            'p_inf': 101325,  # Pa
+            'pv': 2340  # Pa (vapor pressure at 20°C)
+        }
+    
+    def _evaluate(self, x, out, *args, **kwargs):
+        """Evaluate objective functions and constraints"""
+        n_pop = x.shape[0]
+        
+        f1 = np.zeros(n_pop)  # Cavitation index (minimize)
+        f2 = np.zeros(n_pop)  # Negative efficiency (minimize)
+        f3 = np.zeros(n_pop)  # Noise level (minimize)
+        
+        g1 = np.zeros(n_pop)  # Thrust constraint
+        g2 = np.zeros(n_pop)  # Structural constraint
+        g3 = np.zeros(n_pop)  # Cavitation constraint (Keller)
+        
+        for i in range(n_pop):
+            # Extract design variables
+            params = PropellerParams()
+            params.chord_distribution = x[i, 0:10]
+            params.thickness_distribution = x[i, 10:20]
+            params.camber_distribution = x[i, 20:30]
+            params.pitch_ratio = x[i, 30]
+            params.skew = x[i, 31]
+            params.rake = x[i, 32]
+            params.n_blades = int(x[i, 33])
+            
+            # Run BEMT analysis
+            solver = BEMTSolver(params, self.operating_conditions)
+            results = solver.solve(
+                V_ship=self.operating_conditions['V_ship'],
+                rpm=self.operating_conditions['rpm']
+            )
+            
+            # Calculate objectives
+            f1[i] = results['cavitation_index']  # Minimize cavitation
+            f2[i] = -results['efficiency']  # Maximize efficiency (minimize negative)
+            f3[i] = results['noise_level']  # Minimize noise
+            
+            # Constraints
+            g1[i] = 100 - results['thrust']  # Minimum thrust of 100N
+            g2[i] = 0.03 - np.min(params.thickness_distribution)  # Minimum thickness ratio
+            g3[i] = -results['keller_margin']  # Keller criterion must be positive
+            
+            self.eval_count += 1
+            
+            # Print progress occasionally
+            if self.eval_count % 100 == 0:
+                print(f"Evaluation {self.eval_count}: Cav={f1[i]:.3f}, Eff={-f2[i]:.3f}, Noise={f3[i]:.1f}dB")
+        
+        out["F"] = np.column_stack([f1, f2, f3])
+        out["G"] = np.column_stack([g1, g2, g3])
+
+def optimize_propeller(n_generations: int = 50, population_size: int = 100):
+    """Run NSGA-II optimization"""
+    
+    problem = PropellerOptimizationProblem()
+    
+    algorithm = NSGA2(
+        pop_size=population_size,
+        n_offsprings=20,
+        sampling=FloatRandomSampling(),
+        crossover=SBX(prob=0.9, eta=15),
+        mutation=PM(eta=20),
+        eliminate_duplicates=True
+    )
+    
+    termination = get_termination("n_gen", n_generations)
+    
+    print(f"Starting optimization with {population_size} population size for {n_generations} generations")
+    print("Objectives: Minimize [Cavitation, -Efficiency, Noise]")
+    print("-" * 60)
+    
+    res = minimize(problem,
+                   algorithm,
+                   termination,
+                   seed=42,
+                   save_history=True,
+                   verbose=True)
+    
+    return res
+
+def visualize_propeller(params: PropellerParams, save_path: str = None):
+    """Visualize the propeller geometry with performance metrics"""
+    geom = PropellerGeometry(params)
+    prop_mesh = geom.create_propeller()
+    
+    # Calculate performance for display (adjusted for 180mm propeller)
+    solver = BEMTSolver(params, {
+        'V_ship': 3.0,
+        'rpm': 1500,
+        'rho': 1025.0,
+        'nu': 1.35e-6,
+        'depth': 5.0,
+        'p_inf': 101325,
+        'pv': 2340
+    })
+    perf = solver.solve(V_ship=3.0, rpm=1500)
+    
+    # Create visualization
+    fig = plt.figure(figsize=(16, 12))
+    
+    # 3D view
+    ax1 = fig.add_subplot(221, projection='3d')
+    
+    # Plot mesh
+    vertices = prop_mesh.vertices
+    ax1.plot_trisurf(vertices[:, 0], vertices[:, 1], vertices[:, 2],
+                    triangles=prop_mesh.faces,
+                    cmap='viridis', alpha=0.8, edgecolor='none')
+    
+    ax1.set_xlabel('X (mm)')
+    ax1.set_ylabel('Y (mm)')
+    ax1.set_zlabel('Z (mm)')
+    ax1.set_title(f'Optimized Marine Propeller - {params.n_blades} Blades')
+    
+    # Equal aspect ratio
+    max_range = np.array([vertices[:, 0].max()-vertices[:, 0].min(),
+                          vertices[:, 1].max()-vertices[:, 1].min(),
+                          vertices[:, 2].max()-vertices[:, 2].min()]).max() / 2.0
+    
+    mid_x = (vertices[:, 0].max()+vertices[:, 0].min()) * 0.5
+    mid_y = (vertices[:, 1].max()+vertices[:, 1].min()) * 0.5
+    mid_z = (vertices[:, 2].max()+vertices[:, 2].min()) * 0.5
+    
+    ax1.set_xlim(mid_x - max_range, mid_x + max_range)
+    ax1.set_ylim(mid_y - max_range, mid_y + max_range)
+    ax1.set_zlim(mid_z - max_range, mid_z + max_range)
+    ax1.view_init(elev=20, azim=45)
+    
+    # Top view
+    ax2 = fig.add_subplot(222)
+    ax2.triplot(vertices[:, 0], vertices[:, 1], prop_mesh.faces, 'k-', alpha=0.3, linewidth=0.5)
+    ax2.set_xlabel('X (mm)')
+    ax2.set_ylabel('Y (mm)')
+    ax2.set_title('Top View')
+    ax2.set_aspect('equal')
+    ax2.grid(True, alpha=0.3)
+    
+    # Performance metrics display
+    ax3 = fig.add_subplot(223)
+    ax3.axis('off')
+    metrics_text = f"""
+    Performance Metrics @ 1500 RPM, 3 m/s:
+    
+    Thrust: {perf['thrust']:.1f} N
+    Torque: {perf['torque']:.2f} Nm
+    Efficiency: {perf['efficiency']:.3f} ({perf['efficiency']*100:.1f}%)
+    
+    Cavitation Metrics:
+    Cavitation Index: {perf['cavitation_index']:.3f}
+    Tip Cavitation Number: {perf['tip_cavitation_number']:.3f}
+    Keller Margin: {perf['keller_margin']:.3f}
+    Noise Level: {perf['noise_level']:.1f} dB
+    
+    Geometry:
+    Number of Blades: {params.n_blades}
+    Diameter: {params.diameter:.1f} mm
+    Pitch Ratio: {params.pitch_ratio:.3f}
+    Skew: {params.skew:.1f}°
+    Rake: {params.rake:.1f}°
+    
+    Non-dimensional Coefficients:
+    KT: {perf['KT']:.4f}
+    KQ: {perf['KQ']:.4f}
+    J: {perf['J']:.3f}
+    """
+    ax3.text(0.1, 0.9, metrics_text, transform=ax3.transAxes, fontsize=10,
+            verticalalignment='top', fontfamily='monospace')
+    
+    # Blade distribution plots
+    ax4 = fig.add_subplot(224)
+    r_norm = np.linspace(0, 1, len(params.chord_distribution))
+    ax4.plot(r_norm, params.chord_distribution, 'b-', label='Chord', linewidth=2)
+    ax4.plot(r_norm, params.thickness_distribution, 'r-', label='Thickness', linewidth=2)
+    ax4.plot(r_norm, params.camber_distribution, 'g-', label='Camber', linewidth=2)
+    ax4.set_xlabel('Normalized Radius (r/R)')
+    ax4.set_ylabel('Normalized Value')
+    ax4.set_title('Blade Distributions')
+    ax4.legend()
+    ax4.grid(True, alpha=0.3)
+    ax4.set_xlim(0, 1)
+    
+    plt.tight_layout()
+    
+    if save_path:
+        plt.savefig(save_path, dpi=150, bbox_inches='tight')
+    
+    plt.show()
+    
+    return prop_mesh
+
+def save_optimized_design(params: PropellerParams, filepath: str, performance: dict = None):
+    """Save the optimized propeller design"""
+    geom = PropellerGeometry(params)
+    prop_mesh = geom.create_propeller()
+    
+    # Export based on file extension
+    if filepath.endswith('.stl'):
+        prop_mesh.export(filepath, file_type='stl')
+    elif filepath.endswith('.3mf'):
+        # For 3MF, we need to use trimesh's export
+        prop_mesh.export(filepath, file_type='3mf')
+    else:
+        raise ValueError("Unsupported file format. Use .stl or .3mf")
+    
+    print(f"Propeller design saved to: {filepath}")
+    
+    # Save parameters and performance as JSON for reference
+    params_dict = {
+        'geometry': {
+            'n_blades': params.n_blades,
+            'diameter': params.diameter,
+            'hub_dia_base': params.hub_dia_base,
+            'hub_dia_top': params.hub_dia_top,
+            'hub_height': params.hub_height,
+            'pitch_ratio': params.pitch_ratio,
+            'rake': params.rake,
+            'skew': params.skew,
+            'chord_distribution': params.chord_distribution.tolist(),
+            'thickness_distribution': params.thickness_distribution.tolist(),
+            'camber_distribution': params.camber_distribution.tolist()
+        }
+    }
+    
+    if performance:
+        params_dict['performance'] = performance
+    
+    json_path = filepath.replace('.stl', '_params.json').replace('.3mf', '_params.json')
+    with open(json_path, 'w') as f:
+        json.dump(params_dict, f, indent=2)
+    print(f"Parameters saved to: {json_path}")
+
+def main():
+    """Main execution function"""
+    print("\n" + "="*60)
+    print("Marine Propeller Optimization System")
+    print("Built-in CFD using Blade Element Momentum Theory")
+    print("="*60)
+    print("\nOptimization Objectives:")
+    print("1. Minimize cavitation (noise reduction)")
+    print("2. Maximize efficiency")
+    print("3. Minimize acoustic noise")
+    print("\nConstraints:")
+    print("- Minimum thrust: 100 N")
+    print("- Structural integrity (minimum thickness)")
+    print("- Cavitation avoidance (Keller criterion)")
+    print("\nGeometry Specifications:")
+    print("- Diameter: 180mm (tip-to-tip)")
+    print("- Hub: 35-40mm frustum")
+    print("\n" + "-"*60 + "\n")
+    
+    # Run optimization
+    print("Starting NSGA-II optimization with BEMT analysis...\n")
+    
+    results = optimize_propeller(n_generations=30, population_size=60)
+    
+    print("\n" + "-"*60)
+    print("Optimization Complete!")
+    print("-"*60 + "\n")
+    
+    # Extract best solution based on weighted objectives
+    # Weight: 40% cavitation, 40% efficiency, 20% noise
+    weights = np.array([0.4, 0.4, 0.2])
+    
+    # Normalize objectives
+    F_norm = results.F.copy()
+    for i in range(3):
+        F_norm[:, i] = (F_norm[:, i] - F_norm[:, i].min()) / (F_norm[:, i].max() - F_norm[:, i].min() + 1e-6)
+    
+    # Calculate weighted score
+    scores = np.sum(F_norm * weights, axis=1)
+    best_idx = np.argmin(scores)
+    best_solution = results.X[best_idx]
+    
+    # Create optimized parameters
+    optimized_params = PropellerParams()
+    optimized_params.chord_distribution = best_solution[0:10]
+    optimized_params.thickness_distribution = best_solution[10:20]
+    optimized_params.camber_distribution = best_solution[20:30]
+    optimized_params.pitch_ratio = best_solution[30]
+    optimized_params.skew = best_solution[31]
+    optimized_params.rake = best_solution[32]
+    optimized_params.n_blades = int(best_solution[33])
+    
+    # Calculate final performance
+    solver = BEMTSolver(optimized_params, {
+        'V_ship': 5.0,
+        'rpm': 1000,
+        'rho': 1025.0,
+        'nu': 1.35e-6,
+        'depth': 10.0
+    })
+    final_performance = solver.solve(V_ship=5.0, rpm=1000)
+    
+    print("Best Solution Found:")
+    print(f"  Number of blades: {optimized_params.n_blades}")
+    print(f"  Pitch ratio: {optimized_params.pitch_ratio:.3f}")
+    print(f"  Skew angle: {optimized_params.skew:.1f}°")
+    print(f"  Rake angle: {optimized_params.rake:.1f}°")
+    print(f"\nPerformance Metrics:")
+    print(f"  Thrust: {final_performance['thrust']:.1f} N")
+    print(f"  Efficiency: {final_performance['efficiency']*100:.1f}%")
+    print(f"  Cavitation Index: {final_performance['cavitation_index']:.3f}")
+    print(f"  Noise Level: {final_performance['noise_level']:.1f} dB")
+    print(f"  KT: {final_performance['KT']:.4f}")
+    print(f"  KQ: {final_performance['KQ']:.4f}")
+    
+    # Visualize the result
+    print("\n" + "-"*60)
+    print("Generating 3D visualization...")
+    print("-"*60)
+    mesh = visualize_propeller(optimized_params, save_path="optimized_propeller.png")
+    
+    # Save the design
+    print("\n" + "-"*60)
+    print("Saving optimized design files...")
+    print("-"*60)
+    save_optimized_design(optimized_params, "optimized_propeller.stl", final_performance)
+    save_optimized_design(optimized_params, "optimized_propeller.3mf", final_performance)
+    
+    print("\n" + "="*60)
+    print("Optimization Complete! Files saved:")
+    print("="*60)
+    print("✓ optimized_propeller.stl - 3D model for manufacturing")
+    print("✓ optimized_propeller.3mf - Alternative 3D format")
+    print("✓ optimized_propeller_params.json - Design parameters & performance")
+    print("✓ optimized_propeller.png - Visualization & metrics")
+    print("\nThe propeller has been optimized for minimal cavitation")
+    print("and noise while maintaining high efficiency.")
+
+if __name__ == "__main__":
+    main()
