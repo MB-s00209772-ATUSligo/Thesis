@@ -35,19 +35,8 @@ geometry
 
         type        triSurfaceMesh;
 
-        file        "propeller-innerCylinder.stl";
+        file        "propeller-innerCylinder.stl"
 
-        regions
-
-        {
-
-            innerCylinder
-
-            {
-
-                name       innerCylinder;
-
-            }
 
         }
 
@@ -61,17 +50,6 @@ geometry
 
         file        "propeller-middleCylinder.stl";
 
-        regions
-
-        {
-
-            middleCylinder
-
-            {
-
-                name       middleCylinder;
-
-            }
 
         }
 
@@ -124,26 +102,6 @@ geometry
         type        triSurfaceMesh;
 
         file        "propeller.stl";
-
-        regions
-
-        {
-
-            propellerStem
-
-            {
-
-                name       propellerStem;
-
-            }
-
-            propellerTip
-
-            {
-
-                name       propellerTip;
-
-            }
 
         }
 
