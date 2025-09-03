@@ -83,7 +83,7 @@ geometry
 
         type        triSurfaceMesh;
 
-        file        "propeller_outerCylinder.stl";
+        file        "propeller-outerCylinder.stl";
 
         regions
 
