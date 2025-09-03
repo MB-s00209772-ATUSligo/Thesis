@@ -166,6 +166,49 @@ surfaces
     }
 );
 
+/////////////////////////////////////
+
+(propopt) [matthew.barry@janus.kmn.ie@hpc-hn-101 propellerCase]$ nano /HPC/matthew.barry/OpenFOAM-10/run/propellerCase/system/surfaceFeaturesDict
+(propopt) [matthew.barry@janus.kmn.ie@hpc-hn-101 propellerCase]$ surfaceFeatures
+/*---------------------------------------------------------------------------*\
+  =========                 |
+  \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
+   \\    /   O peration     | Website:  https://openfoam.org
+    \\  /    A nd           | Version:  10
+     \\/     M anipulation  |
+\*---------------------------------------------------------------------------*/
+Build  : 10
+Exec   : surfaceFeatures
+Date   : Sep 03 2025
+Time   : 15:39:07
+Host   : "hpc-hn-101"
+PID    : 3551258
+I/O    : uncollated
+Case   : /HPC/matthew.barry/OpenFOAM-10/run/propellerCase
+nProcs : 1
+sigFpe : Enabling floating point exception trapping (FOAM_SIGFPE).
+fileModificationChecking : Monitoring run-time modified files using timeStampMaster (fileModificationSkew 10)
+allowSystemOperations : Allowing user-supplied system call operations
+
+// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
+Create time
+
+Reading "surfaceFeaturesDict"
+
+
+
+--> FOAM FATAL IO ERROR: 
+wrong token type - expected string, found on line 34 the punctuation token '{'
+
+file: /HPC/matthew.barry/OpenFOAM-10/run/propellerCase/system/surfaceFeaturesDict/surfaces at line 34.
+
+    From function Foam::Istream& Foam::operator>>(Foam::Istream&, Foam::fileName&)
+    in file primitives/strings/fileName/fileNameIO.C at line 56.
+
+FOAM exiting
+
+(propopt) [matthew.barry@janus.kmn.ie@hpc-hn-101 propellerCase]$ 
+
 
 
 
