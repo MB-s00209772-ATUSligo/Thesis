@@ -1,0 +1,83 @@
+propopt) [matthew.barry@janus.kmn.ie@hpc-hn-101 matthew.barry]$ python Propeller_Optimizer_NoOpenfoam.py
+
+============================================================
+Marine Propeller Optimization System
+Built-in CFD using Blade Element Momentum Theory
+============================================================
+
+Optimization Objectives:
+1. Minimize cavitation (noise reduction)
+2. Maximize efficiency
+3. Minimize acoustic noise
+
+Constraints:
+- Minimum thrust: 100 N
+- Structural integrity (minimum thickness)
+- Cavitation avoidance (Keller criterion)
+
+Geometry Specifications:
+- Diameter: 180mm (tip-to-tip)
+- Hub: 35-40mm frustum
+
+------------------------------------------------------------
+
+Starting NSGA-II optimization with BEMT analysis...
+
+Starting optimization with 60 population size for 30 generations
+Objectives: Minimize [Cavitation, -Efficiency, Noise]
+------------------------------------------------------------
+/HPC/matthew.barry/Propeller_Optimizer_NoOpenfoam.py:306: RuntimeWarning: divide by zero encountered in scalar divide
+  projected_area_ratio = self.params.n_blades * chord / (2 * np.pi * r_norm * self.params.diameter/2000)
+==========================================================================================
+n_gen  |  n_eval  | n_nds  |     cv_min    |     cv_avg    |      eps      |   indicator  
+==========================================================================================
+     1 |       60 |      1 |  8.909345E+01 |  2.619275E+02 |             - |             -
+     2 |       80 |      1 |  8.909345E+01 |  1.981018E+02 |             - |             -
+Evaluation 100: Cav=0.284, Eff=-4.024, Noise=15.1dB
+     3 |      100 |      1 |  8.909345E+01 |  1.548021E+02 |             - |             -
+     4 |      120 |      1 |  8.909345E+01 |  1.272600E+02 |             - |             -
+     5 |      140 |      1 |  8.909345E+01 |  1.141391E+02 |             - |             -
+     6 |      160 |      1 |  8.909139E+01 |  1.086125E+02 |             - |             -
+     7 |      180 |      1 |  8.356672E+01 |  1.041755E+02 |             - |             -
+Evaluation 200: Cav=0.284, Eff=0.271, Noise=15.0dB
+     8 |      200 |      1 |  8.050754E+01 |  1.002241E+02 |             - |             -
+     9 |      220 |      1 |  8.050754E+01 |  9.625272E+01 |             - |             -
+    10 |      240 |      1 |  8.050754E+01 |  9.201858E+01 |             - |             -
+    11 |      260 |      1 |  8.050754E+01 |  8.887782E+01 |             - |             -
+    12 |      280 |      1 |  7.916900E+01 |  8.719277E+01 |             - |             -
+Evaluation 300: Cav=0.284, Eff=0.275, Noise=14.9dB
+    13 |      300 |      1 |  7.916900E+01 |  8.547551E+01 |             - |             -
+    14 |      320 |      1 |  7.703106E+01 |  8.385171E+01 |             - |             -
+    15 |      340 |      1 |  7.703106E+01 |  8.239782E+01 |             - |             -
+    16 |      360 |      1 |  7.624444E+01 |  8.142315E+01 |             - |             -
+    17 |      380 |      1 |  7.405760E+01 |  8.033541E+01 |             - |             -
+Evaluation 400: Cav=0.284, Eff=0.384, Noise=14.9dB
+    18 |      400 |      1 |  7.339567E+01 |  7.914949E+01 |             - |             -
+    19 |      420 |      1 |  7.276948E+01 |  7.796519E+01 |             - |             -
+    20 |      440 |      1 |  7.250730E+01 |  7.659219E+01 |             - |             -
+    21 |      460 |      1 |  7.027455E+01 |  7.551869E+01 |             - |             -
+    22 |      480 |      1 |  7.009077E+01 |  7.437461E+01 |             - |             -
+Evaluation 500: Cav=0.284, Eff=0.528, Noise=15.0dB
+    23 |      500 |      1 |  7.009077E+01 |  7.321713E+01 |             - |             -
+    24 |      520 |      1 |  6.925904E+01 |  7.256494E+01 |             - |             -
+    25 |      540 |      1 |  6.925904E+01 |  7.198638E+01 |             - |             -
+    26 |      560 |      1 |  6.923306E+01 |  7.148303E+01 |             - |             -
+    27 |      580 |      1 |  6.896021E+01 |  7.100017E+01 |             - |             -
+Evaluation 600: Cav=0.284, Eff=0.519, Noise=15.2dB
+    28 |      600 |      1 |  6.896021E+01 |  7.051238E+01 |             - |             -
+    29 |      620 |      1 |  6.896021E+01 |  7.012221E+01 |             - |             -
+    30 |      640 |      1 |  6.866845E+01 |  6.977017E+01 |             - |             -
+
+------------------------------------------------------------
+Optimization Complete!
+------------------------------------------------------------
+
+Traceback (most recent call last):
+  File "/HPC/matthew.barry/Propeller_Optimizer_NoOpenfoam.py", line 798, in <module>
+    main()
+  File "/HPC/matthew.barry/Propeller_Optimizer_NoOpenfoam.py", line 732, in main
+    F_norm = results.F.copy()
+             ^^^^^^^^^^^^^^
+AttributeError: 'NoneType' object has no attribute 'copy'
+(propopt) [matthew.barry@janus.kmn.ie@hpc-hn-101 matthew.barry]$ 
+
