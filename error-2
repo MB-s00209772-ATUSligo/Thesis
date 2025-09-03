@@ -1,0 +1,32 @@
+ERROR] No pending wires present
+^CTraceback (most recent call last):
+  File "/HPC/matthew.barry/PropOptimCavitation.py", line 262, in <module>
+    main()
+  File "/HPC/matthew.barry/PropOptimCavitation.py", line 230, in main
+    pop, logbook = algorithms.eaMuPlusLambda(pop, toolbox, mu=POP_SIZE, lambda_=POP_SIZE,
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/HPC/matthew.barry/miniconda3/envs/propopt/lib/python3.11/site-packages/deap/algorithms.py", line 302, in eaMuPlusLambda
+    for ind, fit in zip(invalid_ind, fitnesses):
+  File "/HPC/matthew.barry/PropOptimCavitation.py", line 84, in evaluate
+    shutil.copytree(BASE_CASE, case_dir)
+  File "/HPC/matthew.barry/miniconda3/envs/propopt/lib/python3.11/shutil.py", line 573, in copytree
+    return _copytree(entries=entries, src=src, dst=dst, symlinks=symlinks,
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/HPC/matthew.barry/miniconda3/envs/propopt/lib/python3.11/shutil.py", line 509, in _copytree
+    copytree(srcobj, dstname, symlinks, ignore, copy_function,
+  File "/HPC/matthew.barry/miniconda3/envs/propopt/lib/python3.11/shutil.py", line 573, in copytree
+    return _copytree(entries=entries, src=src, dst=dst, symlinks=symlinks,
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/HPC/matthew.barry/miniconda3/envs/propopt/lib/python3.11/shutil.py", line 509, in _copytree
+    copytree(srcobj, dstname, symlinks, ignore, copy_function,
+  File "/HPC/matthew.barry/miniconda3/envs/propopt/lib/python3.11/shutil.py", line 573, in copytree
+    return _copytree(entries=entries, src=src, dst=dst, symlinks=symlinks,
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/HPC/matthew.barry/miniconda3/envs/propopt/lib/python3.11/shutil.py", line 513, in _copytree
+    copy_function(srcobj, dstname)
+  File "/HPC/matthew.barry/miniconda3/envs/propopt/lib/python3.11/shutil.py", line 448, in copy2
+    copyfile(src, dst, follow_symlinks=follow_symlinks)
+  File "/HPC/matthew.barry/miniconda3/envs/propopt/lib/python3.11/shutil.py", line 258, in copyfile
+    with open(dst, 'wb') as fdst:
+KeyboardInterrupt
+
