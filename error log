@@ -209,6 +209,42 @@ FOAM exiting
 
 (propopt) [matthew.barry@janus.kmn.ie@hpc-hn-101 propellerCase]$ 
 
+/////////////////////////////////////////////////////////////////////////
+
+/*--------------------------------*- C++ -*----------------------------------*\
+| =========                 |                                                 |
+| \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox           |
+|  \\    /   O peration     | Version: 10                                     |
+|   \\  /    A nd           | Website:  https://openfoam.org                  |
+|    \\/     M anipulation  |                                                 |
+\*---------------------------------------------------------------------------*/
+
+FoamFile
+{
+    version     2.0;
+    format      ascii;
+    class       dictionary;
+    location    "system";
+    object      surfaceFeaturesDict;
+}
+
+// List of surfaces to extract features from
+surfaces
+(
+    ("propeller-innerCylinder.stl" 4)
+    ("propeller-middleCylinder.stl" 3)
+    ("propeller-outerCylinder.stl" 2)
+    ("propeller.stl" 4)
+);
+
+// Global options
+includedAngle         150;
+writeObjMesh          no;
+extractFromSurface    yes;
+
+// ************************************************************************* //
+
+
 
 
 
