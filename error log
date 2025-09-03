@@ -114,6 +114,33 @@ FOAM exiting
 
 (propopt) [matthew.barry@janus.kmn.ie@hpc-hn-101 propellerCase]$ 
 
+/////////////////////////////////////////////////////
+
+surfaces
+(
+    {
+        file "propeller-innerCylinder.stl";
+        level 4;
+        writeObj yes;
+    }
+    {
+        file "propeller-middleCylinder.stl";
+        level 3;
+        writeObj yes;
+    }
+    {
+        file "propeller-outerCylinder.stl";
+        level 2;
+        writeObj yes;
+    }
+    {
+        file "propeller.stl";
+        level 4;
+        writeObj yes;
+    }
+);
+
+
 
 
 
