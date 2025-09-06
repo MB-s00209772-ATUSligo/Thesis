@@ -1,0 +1,16 @@
+{
+  "type": "B-SERIES",
+  "design": {
+    "n_blades": 3,
+    "ear": 0.55,
+    "pitch_diameter": 1.1,
+    "diameter_mm": 180
+  },
+  "performance": {
+    "thrust_N": 34.92296700394814,
+    "torque_Nm": 1.217024791986425,
+    "efficiency": 0.761168118446391,
+    "noise_db": 127.47395746569914,
+    "cavitation_number": 1.112569800165266
+  }
+}
