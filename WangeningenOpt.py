@@ -188,16 +188,16 @@ class TextFrame(wx.Frame):
         self.Destroy()
     
     def OnMethods(self, event):
-        methods ="Design Task 1 = Given RT, D, V. Find optimum Revolutions \
+        methods ="""Design Task 1 = Given RT, D, V. Find optimum Revolutions \
 Per Minute - RPMopt\
 \
-Design Task 2 = Given Pd, D, V. Find optimum RPM - RPMopt\
+Design Task 2 = Given Pd, D, V. Find optimum RPM - RPMopt
 \
 \
-Design Task 3 = Given RT, N, V. Find optimum Diameter - Dopt\
+Design Task 3 = Given RT, N, V. Find optimum Diameter - Dopt
 \
 \
-Design Task 4 = Given Pd, N, V. Find optimum Diameter - Dopt"
+Design Task 4 = Given Pd, N, V. Find optimum Diameter - Dopt"""
         dialog1 = wx.lib.dialogs.ScrolledMessageDialog(self, methods, "Design Task Options")
         dialog1.ShowModal()
     
